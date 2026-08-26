@@ -1,0 +1,33 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	guardrail(guardrail)
+	supervisor(supervisor)
+	rag(rag)
+	sql_query_agent(sql_query_agent)
+	validator(validator)
+	execute_sql(execute_sql)
+	aggregate(aggregate)
+	memory_write(memory_write)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> supervisor;
+	aggregate --> memory_write;
+	execute_sql --> supervisor;
+	guardrail --> supervisor;
+	memory_write --> __end__;
+	rag --> aggregate;
+	sql_query_agent --> supervisor;
+	validator --> supervisor;
+	supervisor -.-> guardrail;
+	supervisor -.-> rag;
+	supervisor -.-> sql_query_agent;
+	supervisor -.-> validator;
+	supervisor -.-> execute_sql;
+	supervisor -.-> aggregate;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

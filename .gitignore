@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.log
+backend/db/college.db
+backend/chroma_store/
+backend/chat_memory/*.json
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/

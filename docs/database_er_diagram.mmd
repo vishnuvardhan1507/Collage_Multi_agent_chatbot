@@ -1,0 +1,110 @@
+erDiagram
+    USERS {
+        TEXT user_id PK
+        TEXT username
+        TEXT password_hash
+        TEXT role
+        TEXT created_at
+    }
+
+    FACULTY {
+        TEXT faculty_id PK, FK
+        TEXT name
+        TEXT department
+        TEXT designation
+        TEXT email
+        TEXT office_hours
+    }
+
+    STUDENTS {
+        TEXT student_id PK, FK
+        TEXT name
+        TEXT department
+        INTEGER semester
+        TEXT advisor_faculty_id FK
+    }
+
+    COURSES {
+        TEXT course_id PK
+        TEXT course_name
+        TEXT department
+        INTEGER credits
+        TEXT faculty_id FK
+    }
+
+    PREREQUISITES {
+        TEXT course_id PK, FK
+        TEXT prerequisite_course_id PK, FK
+    }
+
+    COURSE_REGISTRATIONS {
+        INTEGER registration_id PK
+        TEXT student_id FK
+        TEXT course_id FK
+        TEXT status
+        TEXT registered_on
+    }
+
+    ATTENDANCE {
+        INTEGER attendance_id PK
+        TEXT student_id FK
+        TEXT course_id FK
+        INTEGER total_classes
+        INTEGER attended_classes
+    }
+
+    RESULTS {
+        INTEGER result_id PK
+        TEXT student_id FK
+        TEXT course_id FK
+        TEXT grade
+        REAL marks
+    }
+
+    LEAVE_REQUESTS {
+        INTEGER leave_id PK
+        TEXT student_id FK
+        TEXT from_date
+        TEXT to_date
+        TEXT reason
+        TEXT status
+        TEXT reviewed_by FK
+        TEXT created_at
+    }
+
+    CLASSROOMS {
+        TEXT classroom_id PK
+        TEXT building
+        INTEGER capacity
+    }
+
+    CLASSROOM_BOOKINGS {
+        INTEGER booking_id PK
+        TEXT classroom_id FK
+        TEXT faculty_id FK
+        TEXT booking_date
+        TEXT start_time
+        TEXT end_time
+        TEXT purpose
+    }
+
+    USERS ||--o| FACULTY : "has faculty profile"
+    USERS ||--o| STUDENTS : "has student profile"
+
+    FACULTY ||--o{ STUDENTS : "advises"
+    FACULTY ||--o{ COURSES : "teaches"
+    FACULTY ||--o{ LEAVE_REQUESTS : "reviews"
+    FACULTY ||--o{ CLASSROOM_BOOKINGS : "books"
+
+    STUDENTS ||--o{ COURSE_REGISTRATIONS : "registers"
+    STUDENTS ||--o{ ATTENDANCE : "has"
+    STUDENTS ||--o{ RESULTS : "receives"
+    STUDENTS ||--o{ LEAVE_REQUESTS : "submits"
+
+    COURSES ||--o{ COURSE_REGISTRATIONS : "has registrations"
+    COURSES ||--o{ ATTENDANCE : "has attendance"
+    COURSES ||--o{ RESULTS : "has results"
+    COURSES ||--o{ PREREQUISITES : "requires"
+    COURSES ||--o{ PREREQUISITES : "is prerequisite for"
+
+    CLASSROOMS ||--o{ CLASSROOM_BOOKINGS : "has bookings"
