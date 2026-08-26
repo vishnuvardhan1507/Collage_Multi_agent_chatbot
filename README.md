@@ -23,19 +23,27 @@ LangGraph workflow:
 
 Login Page:
 
+
 <img width="696" height="399" alt="image" src="https://github.com/user-attachments/assets/2607278e-c257-41ac-9123-012c849a6363" />
+
 
 Student Chat Interface:
 
+
 <img width="753" height="432" alt="image" src="https://github.com/user-attachments/assets/5beda4ba-daa8-49f1-a487-63e895eb4e45" />
+
 
 Faculty Dashboard:
 
+
 <img width="770" height="401" alt="image" src="https://github.com/user-attachments/assets/587f91eb-b3be-4cea-9dd9-6290bb440d62" />
+
 
 ER diagram:
 
+
 <img width="855" height="650" alt="image" src="https://github.com/user-attachments/assets/147efd9e-2749-4f6e-bcf7-9f9527be766e" />
+
 
 ## Technology Stack
 
