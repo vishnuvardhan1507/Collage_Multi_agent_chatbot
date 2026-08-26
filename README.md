@@ -1,18 +1,99 @@
-# Collage_Multi_agent_chatbot
+# AI-Powered College Multi-Agent Assistant System
 
-A full-stack College Multi-Agent Assistant built with React, Flask, SQLite, LangGraph, Groq LLMs, and RAG. It provides secure role-based chat for students and faculty to access attendance, courses, results, leave requests, classroom information, and college policies through a supervised multi-agent workflow.
+A full-stack college assistant that lets students and faculty ask academic and campus-management questions in natural language. The system combines React, Flask, SQLite, JWT authentication, LangGraph orchestration, Groq LLM calls, and RAG to provide secure role-aware answers for attendance, courses, results, leave requests, classrooms, and college policies.
 
-## Stack
+## Project Overview
 
-- React + Vite frontend
-- Flask backend with JWT auth
-- SQLite seeded college database
-- LangGraph orchestration
-- Groq LLM calls through `langchain_groq.ChatGroq`
-- ChromaDB + `sentence-transformers/all-MiniLM-L6-v2` RAG over local markdown files
-- Per-user JSON chat memory
+Educational institutions manage attendance, courses, results, leave requests, classrooms, and policy information across multiple systems. This project provides a conversational interface that helps authenticated students and faculty access that information quickly while preserving role-based access control.
+
+The assistant supports:
+
+- Student and faculty login
+- Natural-language chat for college queries
+- Database-backed answers for academic records
+- RAG-based answers for handbook, leave policy, bus routes, and infrastructure
+- Student leave submission and faculty leave review
+- Agent trace display and workflow visualization
+
+## Screenshots
+
+LangGraph workflow:
+
+<img width="975" height="659" alt="LangGraph workflow" src="https://github.com/user-attachments/assets/75bef96f-6b5a-495e-aae5-cbdf03902a23" />
+
+Add remaining screenshots manually:
+
+- Login Page
+- Student Chat Interface
+- Faculty Dashboard / Leave Review
+- Database ER Diagram
+
+## Technology Stack
+
+- Frontend: React, Vite, Axios, lucide-react
+- Backend: Flask, Flask-CORS, Flask-JWT-Extended, Werkzeug
+- Agent Framework: LangGraph, LangChain
+- LLM Provider: Groq through `langchain_groq.ChatGroq`
+- Database: SQLite
+- RAG: ChromaDB, sentence-transformers, local markdown knowledge base, lexical fallback
+- Storage: Per-user JSON chat memory
+
+## System Workflow
+
+The Supervisor Agent is the central coordinator. It receives the user query, invokes guardrails, decides the route, communicates with specialized agents, and aggregates the final response.
+
+Main flow:
+
+```text
+start -> supervisor -> guardrail -> supervisor -> specialized route -> supervisor/aggregate -> memory_write -> end
+```
+
+SQL flow:
+
+```text
+supervisor -> sql_query_agent -> supervisor -> validator -> supervisor -> execute_sql -> supervisor -> aggregate
+```
+
+## Agent Roles
+
+| Agent / Node | Responsibility |
+| --- | --- |
+| Supervisor Agent | Central coordinator. Receives queries, invokes guardrail, routes work, manages retries, communicates with specialized agents, and aggregates final responses. |
+| Guardrail Agent | Screens requests for safety, college scope, role access, prompt injection, impersonation, and unsafe data access. |
+| SQL Query Agent | Converts scoped natural-language requests into SQLite queries and revises them using validator feedback. |
+| Validator Agent | Checks SQL correctness, schema usage, row-level security, allowed operations, and safety before execution. |
+| RAG Tool | Retrieves relevant context from markdown knowledge files or Chroma for policy and campus information. |
+| Execute SQL Node | Executes validated SQL through the database tool and returns results to the supervisor. |
+| Aggregate Node | Produces the final natural-language chatbot response from direct, RAG, or SQL results. |
+| Memory Write Node | Stores user and assistant turns in per-user JSON session memory. |
+
+## Database Design
+
+SQLite stores users, students, faculty, courses, prerequisites, course registrations, attendance, results, leave requests, classrooms, and classroom bookings. The live schema is read from `backend/db/schema.py`.
+
+ER diagram source:
+
+```text
+docs/database_er_diagram.mmd
+```
+
+## Security and Validation
+
+- JWT authentication identifies the active user.
+- Role policy limits student and faculty access.
+- Guardrails block unrelated, unsafe, impersonation, and prompt-injection requests.
+- Validator checks generated SQL before execution.
+- Database tool blocks multi-statement SQL, administrative SQL, unsafe writes, attendance modifications, and unscoped student queries.
+
+## Requirements
+
+- Python 3.10+
+- Node.js and npm
+- Groq API key
 
 ## Setup
+
+Create environment and install backend dependencies:
 
 ```powershell
 Copy-Item .env.example .env
@@ -20,29 +101,46 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r backend\requirements.txt
 python backend\db\init_db.py
-python backend\app.py
 ```
 
-In another terminal:
+Update `.env` with your Groq key:
+
+```text
+GROQ_API_KEY=your_key_here
+GROQ_MODEL=openai/gpt-oss-20b
+```
+
+Install frontend dependencies:
 
 ```powershell
 cd frontend
 npm install
-npm run dev
 ```
 
-Open `http://localhost:5173`.
+## Run Locally
 
-Or start both development servers from the project root:
+Start both backend and frontend:
 
 ```powershell
 .\scripts\start-dev.ps1
 ```
 
-## LangGraph Visualization
+Or run separately:
 
-<img width="975" height="659" alt="image" src="https://github.com/user-attachments/assets/75bef96f-6b5a-495e-aae5-cbdf03902a23" />
+```powershell
+python backend\app.py
+```
 
+```powershell
+cd frontend
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:5173
+```
 
 ## Demo Accounts
 
@@ -50,22 +148,44 @@ Or start both development servers from the project root:
 - Faculty: `FAC001`
 - Password for all seeded users: `password123`
 
-## API
+## API Endpoints
 
 - `POST /api/auth/login`
 - `GET /api/auth/me`
 - `POST /api/chat`
 - `GET /api/chat/history?session_id=session_001`
+- `GET /api/leaves`
+- `POST /api/leaves`
+- `PATCH /api/leaves/<leave_id>/review`
 
-## Notes
+## Sample Inputs and Expected Outputs
 
-Set `GROQ_API_KEY` in `.env` before using `/api/chat`. Agent routing, guardrails, SQL
-generation, validation, and answer aggregation are implemented as prompt-backed LLM calls.
-The default configured Groq model is `openai/gpt-oss-20b`.
-`tools/db_tool.py` adds an infrastructure safety net that blocks multi-statement SQL,
-administrative SQL, attendance writes, and unscoped student queries.
+| Role | Sample Input | Expected Output |
+| --- | --- | --- |
+| Student | `What is my attendance in Machine Learning?` | Returns the student's scoped attendance details. |
+| Student | `Show my enrolled and pending courses.` | Lists only the logged-in student's courses. |
+| Student | `What is the minimum attendance policy?` | Answers from handbook/RAG context. |
+| Student | `Show attendance of student 192125023.` | Blocks access to another student's data. |
+| Faculty | `Which leave requests are pending for my students?` | Lists pending leave requests within faculty scope. |
+| Faculty | `Approve leave request 1.` | Updates the request only if it is within scope. |
+| Faculty | `Show my assigned classes.` | Lists courses assigned to the logged-in faculty member. |
 
-For fully embedded RAG, keep `RAG_USE_CHROMA=1` and `ALLOW_MODEL_DOWNLOAD=1` in `.env` on a
-machine that can download `sentence-transformers/all-MiniLM-L6-v2`. Without those flags,
-the backend uses the same markdown knowledge base with a local lexical fallback so startup
-does not hang in offline environments.
+## Project Documents
+
+- Project report: `docs/collage_AI_chatbotReport.docx`
+- Database ER diagram: `docs/database_er_diagram.mmd`
+- LangGraph diagram: `backend/agent_graph.mmd`
+
+## Limitations
+
+- Uses seeded demo data instead of a production database.
+- LLM routing depends on Groq API availability.
+- RAG answers are limited to the local markdown knowledge base.
+- Frontend is demonstration-focused.
+
+## Future Enhancements
+
+- Add administrator dashboards and audit logs.
+- Expand database and knowledge-base coverage.
+- Add automated tests for APIs and agent routes.
+- Deploy with a production database and secure secret management.
