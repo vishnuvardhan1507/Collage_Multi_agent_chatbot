@@ -1,3 +1,6 @@
+# Collage_Multi_agent_chatbot
+
+A full-stack College Multi-Agent Assistant built with React, Flask, SQLite, LangGraph, Groq LLMs, and RAG. It provides secure role-based chat for students and faculty to access attendance, courses, results, leave requests, classroom information, and college policies through a supervised multi-agent workflow.
 
 ## Stack
 
@@ -14,10 +17,10 @@
 ```powershell
 Copy-Item .env.example .env
 python -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
-pip install -r backend\\requirements.txt
-python backend\\db\\init_db.py
-python backend\\app.py
+.\.venv\Scripts\Activate.ps1
+pip install -r backend\requirements.txt
+python backend\db\init_db.py
+python backend\app.py
 ```
 
 In another terminal:
