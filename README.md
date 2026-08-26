@@ -71,11 +71,10 @@ supervisor -> sql_query_agent -> supervisor -> validator -> supervisor -> execut
 
 SQLite stores users, students, faculty, courses, prerequisites, course registrations, attendance, results, leave requests, classrooms, and classroom bookings. The live schema is read from `backend/db/schema.py`.
 
-ER diagram source:
+ER diagram:
 
-```text
-docs/database_er_diagram.mmd
-```
+<img width="855" height="650" alt="image" src="https://github.com/user-attachments/assets/147efd9e-2749-4f6e-bcf7-9f9527be766e" />
+
 
 ## Security and Validation
 
