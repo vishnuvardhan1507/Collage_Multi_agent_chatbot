@@ -41,15 +41,8 @@ Or start both development servers from the project root:
 
 ## LangGraph Visualization
 
-Generate a Mermaid diagram of the agent workflow from the project root:
+<img width="975" height="659" alt="image" src="https://github.com/user-attachments/assets/75bef96f-6b5a-495e-aae5-cbdf03902a23" />
 
-```powershell
-$env:PYTHONPATH="backend"
-.\.venv\Scripts\python.exe -c "from workflow.graph import visualize_graph; visualize_graph('backend/agent_graph.mmd')"
-```
-
-Open `backend/agent_graph.mmd` with a Mermaid preview extension, or paste its contents into
-`https://mermaid.live`.
 
 ## Demo Accounts
 
