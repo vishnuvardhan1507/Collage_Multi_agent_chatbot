@@ -1,6 +1,6 @@
 # AI-Powered College Multi-Agent Assistant System
 
-A full-stack college assistant that lets students and faculty ask academic and campus-management questions in natural language. The system combines React, Flask, SQLite, JWT authentication, LangGraph orchestration, Groq LLM calls, and RAG to provide secure role-aware answers for attendance, courses, results, leave requests, classrooms, and college policies.
+AI college assistant that lets students and faculty ask academic and campus-management questions in natural language. The system combines React, Flask, SQLite, JWT authentication, LangGraph orchestration, Groq LLM calls, and RAG to provide secure role-aware answers for attendance, courses, results, leave requests, classrooms, and college policies.
 
 ## Project Overview
 
@@ -21,12 +21,21 @@ LangGraph workflow:
 
 <img width="975" height="659" alt="LangGraph workflow" src="https://github.com/user-attachments/assets/75bef96f-6b5a-495e-aae5-cbdf03902a23" />
 
-Add remaining screenshots manually:
+Login Page:
 
-- Login Page
-- Student Chat Interface
-- Faculty Dashboard / Leave Review
-- Database ER Diagram
+<img width="696" height="399" alt="image" src="https://github.com/user-attachments/assets/2607278e-c257-41ac-9123-012c849a6363" />
+
+Student Chat Interface:
+
+<img width="753" height="432" alt="image" src="https://github.com/user-attachments/assets/5beda4ba-daa8-49f1-a487-63e895eb4e45" />
+
+Faculty Dashboard:
+
+<img width="770" height="401" alt="image" src="https://github.com/user-attachments/assets/587f91eb-b3be-4cea-9dd9-6290bb440d62" />
+
+ER diagram:
+
+<img width="855" height="650" alt="image" src="https://github.com/user-attachments/assets/147efd9e-2749-4f6e-bcf7-9f9527be766e" />
 
 ## Technology Stack
 
@@ -70,11 +79,6 @@ supervisor -> sql_query_agent -> supervisor -> validator -> supervisor -> execut
 ## Database Design
 
 SQLite stores users, students, faculty, courses, prerequisites, course registrations, attendance, results, leave requests, classrooms, and classroom bookings. The live schema is read from `backend/db/schema.py`.
-
-ER diagram:
-
-<img width="855" height="650" alt="image" src="https://github.com/user-attachments/assets/147efd9e-2749-4f6e-bcf7-9f9527be766e" />
-
 
 ## Security and Validation
 
