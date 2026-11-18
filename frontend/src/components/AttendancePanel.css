@@ -1,0 +1,10 @@
+.faculty-tool-tabs{display:flex;gap:.5rem;margin:0 0 1rem;border-bottom:1px solid #dbe4f4;padding-bottom:.7rem}
+.faculty-tool-tabs button,.attendance-panel button{border:1px solid #d4def2;border-radius:10px;background:#eef3ff;color:#091466;padding:.65rem 1rem;font:inherit;cursor:pointer}
+.faculty-tool-tabs button[aria-pressed=true],.attendance-panel .attendance-save{background:#245eef;color:white;border-color:#245eef}
+.attendance-panel{color:#263c65}.attendance-panel h3{color:#091466;margin-top:0}.attendance-panel p{font-size:.95rem}
+.attendance-controls{display:flex;gap:1rem;align-items:end;margin-bottom:1rem}.attendance-panel label{display:block}
+.attendance-panel .attendance-refresh{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:.65rem}
+.attendance-panel input[type=date],.attendance-panel select{display:block;box-sizing:border-box;width:100%;max-width:100%;padding:.7rem;border:1px solid #cbd7ed;border-radius:10px;background:white;color:#091466;font:inherit;margin-top:.4rem}
+.attendance-roster{display:grid;gap:.7rem;margin:1rem 0}.attendance-roster fieldset{border:1px solid #d5dff0;border-radius:12px;padding:.6rem 1rem;min-width:0}.attendance-roster legend{font-weight:600;font-size:.95rem}.attendance-roster label{display:inline-flex;align-items:center;gap:.4rem;margin-right:1.3rem;min-height:36px}
+.attendance-panel button:disabled{opacity:.5;cursor:not-allowed}.attendance-panel :focus-visible,.faculty-tool-tabs button:focus-visible{outline:3px solid #245eef;outline-offset:3px}
+@media(max-width:600px){.attendance-controls{flex-wrap:wrap}.attendance-panel select{font-size:.85rem}.attendance-roster legend{overflow-wrap:anywhere}}

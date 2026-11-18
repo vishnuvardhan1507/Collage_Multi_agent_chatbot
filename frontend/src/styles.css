@@ -320,8 +320,8 @@ button {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(248, 249, 246, 0.9)),
     #f6f7f3;
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
@@ -338,6 +338,10 @@ button {
   justify-content: space-between;
 }
 
+.leave-review-sections { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+.leave-review-sections button { border: 1px solid #d4def2; border-radius: 10px; padding: .6rem .85rem; background: #eef3ff; color: #091466; font: inherit; cursor: pointer; }
+.leave-review-sections button[aria-pressed="true"] { background: #245eef; color: white; border-color: #245eef; }
+.leave-review-sections button:focus-visible { outline: 3px solid #245eef; outline-offset: 3px; }
 .leave-panel h2 {
   font-size: 1.1rem;
   margin: 3px 0 0;
@@ -662,4 +666,14 @@ button {
   .status-cluster {
     display: none;
   }
+}
+/* Session navigation and sample-data context. */
+.session-picker { display: grid; gap: 8px; font-size: 0.85rem; min-width: 0; }
+.session-picker select { width: 100%; min-width: 0; border: 1px solid #ccd3df; border-radius: 8px; padding: 8px; color: #172033; background: white; }
+.demo-notice { margin: 0; padding: 10px 24px; color: #6b4c14; background: #fff8e6; font-size: 0.82rem; }
+.leave-list { max-height: 250px; overflow-y: auto; }
+.messages { flex: 1; }
+@media (max-width: 860px) {
+  .leave-form { grid-template-columns: 1fr 1fr; }
+  .leave-form input { min-width: 0; }
 }

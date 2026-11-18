@@ -1,11 +1,35 @@
+# Credentials and local environments
 .env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 .venv/
+venv/
 __pycache__/
-*.pyc
+*.py[cod]
+# Private/runtime data
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.bak
 *.log
-backend/db/college.db
+*.pem
+*.key
+backend/backups/
+backend/chat_memory/
 backend/chroma_store/
-backend/chat_memory/*.json
+backend/uploads/
+**/uploads/
+artifacts/
+# Generated frontend files
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+# Local tooling
+.pytest_cache/
+.coverage
+.DS_Store
+Thumbs.db

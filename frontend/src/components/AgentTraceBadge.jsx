@@ -4,7 +4,6 @@ const icons = {
   guardrail: Shield,
   supervisor: Route,
   sql_query_agent: Database,
-  sql_query_agent_execute: Database,
   validator_agent: CheckCircle2,
   rag_tool: FileSearch,
   db_tool: Database,

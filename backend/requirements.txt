@@ -8,3 +8,8 @@ langchain==0.3.7
 langchain-groq==0.2.1
 chromadb==0.5.20
 sentence-transformers==3.2.1
+filelock>=3.16,<4
+tzdata>=2024.2
+Pillow>=10.4,<13
+requests>=2.32,<3
+pypdf>=6.0,<7

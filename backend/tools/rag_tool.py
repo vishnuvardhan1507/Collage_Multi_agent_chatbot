@@ -1,122 +1,89 @@
+import hashlib
 import os
+import re
 from pathlib import Path
-from typing import List, Tuple
+from threading import RLock
 
 from flask import current_app, has_app_context
 
+_lock = RLock()
 _collection = None
-_fallback_chunks: List[Tuple[str, str]] = []
-
-DEFAULT_CHUNK_SIZE = 450
-DEFAULT_CHUNK_OVERLAP = 75
-
-
-def _kb_dir() -> Path:
-    if has_app_context():
-        return Path(current_app.config["KNOWLEDGE_BASE_DIR"])
-    return Path(__file__).resolve().parents[1] / "knowledge_base"
+_embedder = None
+_cache_key = None
+_chunks = []
 
 
-def _persist_dir() -> str:
-    if has_app_context():
-        return current_app.config["CHROMA_PERSIST_DIR"]
-    return str(Path(__file__).resolve().parents[1] / "chroma_store")
+def _kb_dir():
+    return Path(current_app.config["KNOWLEDGE_BASE_DIR"]) if has_app_context() else Path(__file__).resolve().parents[1] / "knowledge_base"
 
 
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, default))
-    except (TypeError, ValueError):
-        return default
+def _persist_dir():
+    return str(current_app.config["CHROMA_PERSIST_DIR"]) if has_app_context() else str(Path(__file__).resolve().parents[1] / "chroma_store")
 
 
-def _chunk_settings() -> Tuple[int, int]:
-    size = _env_int("RAG_CHUNK_SIZE", DEFAULT_CHUNK_SIZE)
-    overlap = _env_int("RAG_CHUNK_OVERLAP", DEFAULT_CHUNK_OVERLAP)
-    if size < 200:
-        size = DEFAULT_CHUNK_SIZE
-    if overlap < 0 or overlap >= size:
-        overlap = min(DEFAULT_CHUNK_OVERLAP, size // 4)
-    return size, overlap
-
-
-def _chunk_text(text: str, size: int | None = None, overlap: int | None = None) -> List[str]:
-    if size is None or overlap is None:
-        size, overlap = _chunk_settings()
+def _load_chunks():
     chunks = []
-    start = 0
-    while start < len(text):
-        chunk = text[start : start + size].strip()
-        if chunk:
-            chunks.append(chunk)
-        start += size - overlap
+    for path in sorted(_kb_dir().glob("*.md")):
+        content = path.read_text(encoding="utf-8")
+        for index, start in enumerate(range(0, len(content), 780)):
+            chunks.append({"id": f"{path.stem}-{index}", "text": content[start:start + 900], "source": path.name})
     return chunks
 
 
-def _load_chunks() -> List[Tuple[str, str]]:
-    items: List[Tuple[str, str]] = []
-    for path in sorted(_kb_dir().glob("*.md")):
-        text = path.read_text(encoding="utf-8")
-        for index, chunk in enumerate(_chunk_text(text)):
-            items.append((f"{path.stem}-{index}", chunk))
-    return items
-
-
 def ensure_vector_store():
-    global _collection, _fallback_chunks
-    _fallback_chunks = _load_chunks()
-    if not _fallback_chunks:
-        return None
-    if os.getenv("RAG_USE_CHROMA", "0") != "1":
-        _collection = None
-        return None
-
-    try:
-        import chromadb
-        from sentence_transformers import SentenceTransformer
-
-        class SentenceTransformerEmbeddingFunction:
-            def __init__(self):
-                allow_download = os.getenv("ALLOW_MODEL_DOWNLOAD", "0") == "1"
-                self.model = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=not allow_download)
-
-            def __call__(self, input):
-                return self.model.encode(input, normalize_embeddings=True).tolist()
-
-        client = chromadb.PersistentClient(path=_persist_dir())
-        embedding_fn = SentenceTransformerEmbeddingFunction()
-        collection = client.get_or_create_collection("college_knowledge", embedding_function=embedding_fn)
-        existing = collection.count()
-        if existing and existing != len(_fallback_chunks):
-            existing_ids = collection.get().get("ids", [])
-            if existing_ids:
-                collection.delete(ids=existing_ids)
-            existing = 0
-        if existing == 0:
-            ids = [item[0] for item in _fallback_chunks]
-            docs = [item[1] for item in _fallback_chunks]
-            collection.add(ids=ids, documents=docs)
-        _collection = collection
-    except Exception:
-        _collection = None
-    return _collection
+    global _collection, _embedder, _cache_key, _chunks
+    with _lock:
+        chunks = _load_chunks()
+        fingerprint = hashlib.sha256(repr(chunks).encode()).hexdigest()
+        key = (str(_kb_dir()), _persist_dir(), fingerprint, os.getenv("RAG_USE_CHROMA", "0"), os.getenv("ALLOW_MODEL_DOWNLOAD", "0"))
+        if key == _cache_key:
+            return _collection
+        _chunks, _collection, _embedder, _cache_key = chunks, None, None, key
+        if not chunks or key[3] != "1":
+            return None
+        try:
+            import chromadb
+            from sentence_transformers import SentenceTransformer
+            embedder = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=key[4] != "1")
+            client = chromadb.PersistentClient(path=_persist_dir())
+            collection = client.get_or_create_collection("college_knowledge_v2", embedding_function=None)
+            if (collection.metadata or {}).get("fingerprint") != fingerprint:
+                ids = [item["id"] for item in chunks]
+                old_ids = collection.get().get("ids", [])
+                stale = list(set(old_ids) - set(ids))
+                if stale:
+                    collection.delete(ids=stale)
+                docs = [item["text"] for item in chunks]
+                collection.upsert(ids=ids, documents=docs,
+                    metadatas=[{"source": item["source"]} for item in chunks],
+                    embeddings=embedder.encode(docs, normalize_embeddings=True).tolist())
+                collection.modify(metadata={"fingerprint": fingerprint})
+            _collection, _embedder = collection, embedder
+        except Exception:
+            # Local lexical retrieval remains available without model downloads/network.
+            _collection, _embedder = None, None
+        return _collection
 
 
-def _lexical_query(question: str, k: int) -> str:
-    terms = {term.lower().strip(".,?!") for term in question.split() if len(term) > 2}
-    ranked = []
-    for chunk_id, chunk in _fallback_chunks or _load_chunks():
-        lower = chunk.lower()
-        score = sum(1 for term in terms if term in lower)
-        ranked.append((score, chunk_id, chunk))
-    ranked.sort(reverse=True)
-    return "\n\n".join(chunk for score, _, chunk in ranked[:k] if score > 0) or "\n\n".join(chunk for _, chunk in _fallback_chunks[:k])
-
-
-def query(question: str, k: int = 4) -> str:
-    if _collection is None:
+def retrieve(question, k=4):
+    with _lock:
         ensure_vector_store()
-    if _collection is not None:
-        result = _collection.query(query_texts=[question], n_results=k)
-        return "\n\n".join(result.get("documents", [[]])[0])
-    return _lexical_query(question, k)
+        chosen = []
+        if not chosen and _collection is not None:
+            try:
+                result = _collection.query(query_embeddings=_embedder.encode([question], normalize_embeddings=True).tolist(), n_results=min(k, _collection.count()))
+                chosen = [{"text": doc, "source": meta["source"]} for doc, meta in zip(result["documents"][0], result["metadatas"][0])]
+            except Exception:
+                chosen = []
+        if not chosen:
+            terms = {word for word in re.findall(r"[a-z]+", question.lower()) if len(word) > 2}
+            ranked = sorted(_chunks, key=lambda item: sum(term in item["text"].lower() for term in terms), reverse=True)
+            chosen = [item for item in ranked if any(term in item["text"].lower() for term in terms)][:k]
+        return {
+            "context": "\n\n".join(f"[{item['source']}]\n{item['text']}" for item in chosen),
+            "sources": list(dict.fromkeys(item["source"] for item in chosen)),
+        }
+
+
+def query(question, k=4):
+    return retrieve(question, k)["context"]

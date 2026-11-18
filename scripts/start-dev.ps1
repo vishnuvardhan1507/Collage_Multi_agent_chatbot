@@ -10,6 +10,9 @@ if (-not (Test-Path (Join-Path $root ".venv\Scripts\python.exe"))) {
   python -m venv (Join-Path $root ".venv")
 }
 
+& (Join-Path $root ".venv\Scripts\python.exe") (Join-Path $root "backend\db\migrate.py")
+if ($LASTEXITCODE -ne 0) { throw "Database migration failed." }
+
 Start-Process -FilePath (Join-Path $root ".venv\Scripts\python.exe") `
   -ArgumentList "backend\app.py" `
   -WorkingDirectory $root `
@@ -24,5 +27,13 @@ Start-Process -FilePath "npm.cmd" `
   -RedirectStandardOutput $frontendLog `
   -RedirectStandardError $frontendErr
 
-Write-Host "Backend:  http://127.0.0.1:5000"
+Start-Process -FilePath (Join-Path $root ".venv\Scripts\python.exe") `
+  -ArgumentList "-m flask --app app notification-worker" `
+  -WorkingDirectory (Join-Path $root "backend") `
+  -WindowStyle Hidden `
+  -RedirectStandardOutput (Join-Path $root "backend\notification-worker.log") `
+  -RedirectStandardError (Join-Path $root "backend\notification-worker.err.log")
+
+Write-Host "Backend:  http://127.0.0.1:5001"
 Write-Host "Frontend: http://127.0.0.1:5173"
+Write-Host "Email worker started. Delivery requires valid SMTP settings; failed deliveries remain recorded in the private outbox."

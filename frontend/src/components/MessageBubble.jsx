@@ -1,4 +1,6 @@
-import AgentTraceBadge from "./AgentTraceBadge.jsx";
+import { GraduationCap, Square, Volume2, Pause, Play } from 'lucide-react';
+import Avatar from './Avatar';
+import { useEffect, useState } from 'react';
 
 function splitTableRow(line) {
   return line
@@ -81,14 +83,31 @@ function MessageContent({ content }) {
   );
 }
 
-export default function MessageBubble({ message }) {
+export default function MessageBubble({ message, avatar, onRead, speaking, paused, onPause, canSpeak, onDecision, confirmationBusy, actionsDisabled }) {
   const isUser = message.role === "user";
+  const [now, setNow] = useState(Date.now());
+  const confirmation = message.confirmation;
+  useEffect(() => {
+    if (confirmation?.status !== 'pending') return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, Date.parse(confirmation.expires_at) - Date.now()) + 50);
+    return () => clearTimeout(timer);
+  }, [confirmation?.id, confirmation?.status, confirmation?.expires_at]);
+  const status = confirmation?.status === 'pending' && Date.parse(confirmation.expires_at) <= now ? 'expired' : confirmation?.status;
   return (
     <article className={`message ${isUser ? "message-user" : "message-assistant"}`}>
-      <div className="message-content">
+      <div className="message-avatar">{isUser ? <Avatar avatar={avatar} /> : <GraduationCap />}</div>
+      <div className="message-card"><div className="message-content">
         <MessageContent content={message.content} />
       </div>
-      {!isUser && <AgentTraceBadge trace={message.trace} />}
+      {!isUser && confirmation && <div className="chat-confirmation" aria-live="polite">
+        {status === 'pending' ? <><span>Awaiting your confirmation · expires in 15 minutes</span><div className="confirmation-buttons"><button className="confirm-action" disabled={actionsDisabled || confirmationBusy} onClick={() => onDecision(confirmation.id, 'confirm')}>{confirmationBusy ? 'Processing…' : 'Confirm'}</button><button className="cancel-action" disabled={actionsDisabled || confirmationBusy} onClick={() => onDecision(confirmation.id, 'cancel')}>Cancel</button></div></> : <><strong>{({confirmed:'Confirmed', cancelled:'Cancelled', expired:'Expired', failed:'Failed', superseded:'Replaced by a newer request'})[status] || 'Unavailable'}</strong>{confirmation.result_message && <p>{confirmation.result_message}</p>}</>}
+      </div>}
+      <div className="message-footer">{message.timestamp && <time dateTime={message.timestamp}>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>}
+      {!isUser && <div className="read-aloud-controls" role="group" aria-label="Read-aloud controls">
+        {speaking && <button type="button" className="read-aloud" onClick={onPause} disabled={!canSpeak} aria-label={paused ? 'Resume reading' : 'Pause reading'}>{paused ? <Play size={15} aria-hidden="true" /> : <Pause size={15} aria-hidden="true" />}{paused ? 'Resume' : 'Pause'}</button>}
+        <button type="button" className="read-aloud" onClick={onRead} disabled={!canSpeak} aria-label={speaking ? 'Stop reading' : 'Read answer aloud'}>{speaking ? <Square size={15} aria-hidden="true" /> : <Volume2 size={15} aria-hidden="true" />}{speaking ? 'Stop' : 'Read aloud'}</button>
+      </div>}</div>
+      </div>
     </article>
   );
 }

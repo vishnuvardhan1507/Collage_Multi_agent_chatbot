@@ -1,64 +1,132 @@
 import json
-from datetime import datetime
+import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List
+from uuid import uuid4
 
+from filelock import FileLock
 from flask import current_app, has_app_context
 
 
-def _memory_dir() -> Path:
-    if has_app_context():
-        return Path(current_app.config["CHAT_MEMORY_DIR"])
-    return Path(__file__).resolve().parents[1] / "chat_memory"
+def _memory_dir():
+    return Path(current_app.config["CHAT_MEMORY_DIR"]) if has_app_context() else Path(__file__).resolve().parents[1] / "chat_memory"
 
 
-def _memory_path(user_id: str) -> Path:
-    path = _memory_dir()
-    path.mkdir(parents=True, exist_ok=True)
-    return path / f"{user_id}.json"
+def _memory_path(user_id):
+    if not isinstance(user_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", user_id):
+        raise ValueError("Invalid user ID for conversation storage.")
+    directory = _memory_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / f"{user_id}.json"
 
 
-def _default_doc(user_id: str) -> Dict:
-    return {"user_id": user_id, "username": user_id, "role": "", "sessions": []}
-
-
-def read_memory(user_id: str) -> Dict:
-    path = _memory_path(user_id)
+def _read(path, user_id):
     if not path.exists():
-        return _default_doc(user_id)
+        return {"user_id": user_id, "username": user_id, "role": "", "sessions": []}
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def write_memory(user_id: str, data: Dict) -> None:
-    _memory_path(user_id).write_text(json.dumps(data, indent=2), encoding="utf-8")
+def _write(path, data):
+    temporary = path.with_name(path.name + "." + uuid4().hex + ".tmp")
+    try:
+        with temporary.open("w", encoding="utf-8") as stream:
+            json.dump(data, stream, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
-def load_history(user_id: str, session_id: str) -> List[Dict[str, str]]:
-    data = read_memory(user_id)
-    for session in data.get("sessions", []):
-        if session.get("session_id") == session_id:
-            return session.get("messages", [])
-    return []
+def read_memory(user_id):
+    path = _memory_path(user_id)
+    with FileLock(str(path) + ".lock", timeout=30):
+        return _read(path, user_id)
 
 
-def load_session(user_id: str, session_id: str) -> Dict:
-    data = read_memory(user_id)
-    for session in data.get("sessions", []):
-        if session.get("session_id") == session_id:
-            return data
-    data.setdefault("sessions", []).append(
-        {"session_id": session_id, "timestamp": datetime.utcnow().isoformat(), "messages": []}
-    )
-    write_memory(user_id, data)
-    return data
+def update_memory(user_id, change):
+    path = _memory_path(user_id)
+    with FileLock(str(path) + ".lock", timeout=30):
+        data = _read(path, user_id)
+        change(data)
+        _write(path, data)
+        return data
 
 
-def append_turn(user_id: str, session_id: str, role: str, content: str) -> None:
-    data = read_memory(user_id)
+def sync_profile(user_id, username, role):
+    return update_memory(user_id, lambda data: data.update(username=username, role=role))
+
+
+def _session(data, session_id):
+    if session_id in data.get("deleted_sessions", []):
+        raise ValueError("This conversation has been deleted. Start a new session.")
     sessions = data.setdefault("sessions", [])
-    session = next((item for item in sessions if item.get("session_id") == session_id), None)
-    if not session:
-        session = {"session_id": session_id, "timestamp": datetime.utcnow().isoformat(), "messages": []}
+    session = next((item for item in sessions if item["session_id"] == session_id), None)
+    if session is None:
+        session = {"session_id": session_id, "timestamp": datetime.now(timezone.utc).isoformat(), "messages": []}
         sessions.append(session)
-    session.setdefault("messages", []).append({"role": role, "content": content})
-    write_memory(user_id, data)
+    return session
+
+
+def load_history(user_id, session_id):
+    data = read_memory(user_id)
+    return next((s.get("messages", []) for s in data["sessions"] if s["session_id"] == session_id), [])
+
+
+def load_session(user_id, session_id):
+    return read_memory(user_id)
+
+
+def delete_session(user_id, session_id):
+    def remove(data):
+        from contextlib import closing
+        from tools.db_tool import get_connection
+        with closing(get_connection()) as conn, conn:
+            conn.execute("UPDATE chat_confirmations SET status='cancelled',response='Conversation deleted.' WHERE user_id=? AND session_id=? AND status='pending'", (user_id,session_id))
+        data["sessions"] = [s for s in data.get("sessions", []) if s["session_id"] != session_id]
+        deleted = data.setdefault("deleted_sessions", [])
+        if session_id not in deleted:
+            deleted.append(session_id)
+    return update_memory(user_id, remove)
+
+
+def clear_history(user_id):
+    """Clear this account under the same memory-first lock as confirmations."""
+    removed = []
+    def remove(data):
+        from contextlib import closing
+        from tools.db_tool import get_connection
+        sessions = data.get('sessions', [])
+        removed.extend(s['session_id'] for s in sessions)
+        deleted = set(data.get('deleted_sessions', []))
+        deleted.update(removed)
+        with closing(get_connection()) as conn, conn:
+            conn.execute('BEGIN IMMEDIATE')
+            deleted.update(row['session_id'] for row in conn.execute(
+                "SELECT session_id FROM chat_confirmations WHERE user_id=? AND status='pending'", (user_id,)))
+            conn.execute("UPDATE chat_confirmations SET status='cancelled',response='Conversation deleted.' WHERE user_id=? AND status='pending'", (user_id,))
+        data['sessions'] = []
+        data['deleted_sessions'] = sorted(deleted)
+    update_memory(user_id, remove)
+    return len(removed)
+
+
+def append_turn(user_id, session_id, role, content, **metadata):
+    def append(data):
+        if role == "assistant" and session_id in data.get("deleted_sessions", []):
+            return
+        session = _session(data, session_id)
+        message = {"role": role, "content": content, "timestamp": datetime.now(timezone.utc).isoformat(), **metadata}
+        # Pair concurrent replies with their question, without losing either turn.
+        messages = session.setdefault("messages", [])
+        if role == "assistant" and metadata.get("request_id"):
+            for index, previous in enumerate(messages):
+                if previous.get("request_id") == metadata["request_id"] and previous["role"] == "user":
+                    messages.insert(index + 1, message)
+                    break
+            else:
+                messages.append(message)
+        else:
+            messages.append(message)
+    return update_memory(user_id, append)
