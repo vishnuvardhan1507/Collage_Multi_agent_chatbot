@@ -51,7 +51,7 @@ def current_courses(conn, user):
     """The student's recorded curriculum, not only the current enrollment."""
     return {row['course_id'] for row in conn.execute("""SELECT r.course_id
         FROM course_registrations r JOIN users u ON u.user_id=r.student_id
-        WHERE u.user_id=? AND u.role='student'
+        WHERE u.user_id=? AND u.role='student' AND u.is_active=1
         AND r.status IN ('completed','enrolled','pending')""", (user,))}
 
 
@@ -102,7 +102,7 @@ def queue_digests(conn, now, users=None):
         return
     from tools.notifications import enqueue
     if users is None:
-        users = [r['user_id'] for r in conn.execute("SELECT user_id FROM users WHERE role='student'")]
+        users = [r['user_id'] for r in conn.execute("SELECT user_id FROM users WHERE role='student' AND is_active=1")]
     records = sorted(_publication_rows(conn), key=lambda r: (r[2]['published'], r[1]), reverse=True)
     for user in users:
         key = f'subject-update:{user}:{now.date().isoformat()}'

@@ -375,6 +375,35 @@ def migrate(path):
     return saved
 
 
+_migrate_before_admin = migrate
+
+def migrate(path):
+    saved = _migrate_before_admin(path)
+    from db.admin_migration import migrate_admin
+    admin_backup = migrate_admin(path)
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute('PRAGMA foreign_keys=ON')
+        hostel_backup = None
+        if not conn.execute('SELECT 1 FROM schema_migrations WHERE version=22').fetchone():
+            hostel_backup = backup(conn, path)
+            with conn:
+                conn.execute('BEGIN IMMEDIATE')
+                conn.execute('''CREATE TABLE IF NOT EXISTS hostel_bookings(
+                    booking_id INTEGER PRIMARY KEY,
+                    student_id TEXT NOT NULL REFERENCES students(student_id),
+                    room_id TEXT NOT NULL REFERENCES hostel_rooms(room_id),
+                    status TEXT NOT NULL CHECK(status IN ('active','cancelled')),
+                    monthly_room_fee INTEGER NOT NULL CHECK(monthly_room_fee>=0),
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    cancelled_at TEXT,
+                    CHECK((status='active' AND cancelled_at IS NULL) OR
+                          (status='cancelled' AND cancelled_at IS NOT NULL)))''')
+                conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS hostel_one_active ON hostel_bookings(student_id) WHERE status='active'")
+                conn.execute('CREATE INDEX IF NOT EXISTS hostel_room_allocations ON hostel_bookings(room_id,status)')
+                conn.execute('INSERT OR IGNORE INTO schema_migrations(version) VALUES(22)')
+    return saved or admin_backup or hostel_backup
+
+
 def seed_demo(path, year=None):
     """Insert missing current academic samples only; preserve accounts and existing rows."""
     import tempfile

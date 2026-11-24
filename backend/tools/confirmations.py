@@ -11,6 +11,14 @@ from tools.operations import compile_operation, execute_operation_in_transaction
 
 
 def summary(operation):
+    if operation['type']=='book_hostel':
+        room=operation['room_snapshot']
+        return (f"Book one hostel bed in {room['room_id']}?\n"
+                f"Sharing: {room['sharing_capacity']}; AC: {'Yes' if room['has_ac'] else 'No'}\n"
+                f"Room fee: INR {room['monthly_room_fee']:,} per student per month.\n"
+                'Immediate allocation; mess charges are separate. This proposal does not hold a bed.')
+    if operation['type']=='cancel_hostel':
+        return f"Cancel hostel booking #{operation['booking_id']} for {operation['room_id']}?\nYour allocated bed will be released."
     if operation['type']=='delete_alerts':
         return 'Delete these alerts?\n' + '\n'.join(f"#{item['id']}: {item['summary']}" for item in operation['alerts'])
     if operation['type'] == 'submit_leave':
@@ -33,12 +41,13 @@ def public(row):
 
 
 def propose(operation, user_id, role, session_id, expected_leave_revision=None):
-    if operation.get('type') not in {'submit_leave','book_classroom','delete_alerts'}:
+    if operation.get('type') not in {'submit_leave','book_classroom','delete_alerts','book_hostel','cancel_hostel'}:
         raise OperationError('Unsupported confirmation action.')
-    if operation['type']!='delete_alerts':
+    if operation['type'] not in {'delete_alerts','book_hostel','cancel_hostel'}:
         compile_operation(operation,user_id,role)
     result = {}
     def create(data):
+        nonlocal operation
         if session_id in data.get('deleted_sessions',[]):
             raise OperationError('This conversation has been deleted. Start a new session.')
         session = next((s for s in data['sessions'] if s['session_id']==session_id),None)
@@ -48,6 +57,9 @@ def propose(operation, user_id, role, session_id, expected_leave_revision=None):
         with closing(get_connection()) as conn, conn:
             conn.execute('BEGIN IMMEDIATE')
             verify_identity(conn,user_id,role)
+            if operation['type'] in {'book_hostel','cancel_hostel'}:
+                from tools.hostel import prepare
+                operation=prepare(conn,operation,user_id,role)
             if operation['type']=='delete_alerts':
                 from tools.alerts import deletion_selection, _summary
                 rows=deletion_selection(conn,user_id,role,operation.get('ids'))
@@ -98,10 +110,14 @@ def decide(identifier, user_id, role, session_id, decision):
                                     raise OperationError('An alert changed after this confirmation was shown. Request deletion again to review the latest details.')
                             deleted=delete_alerts_in_transaction(conn,user_id,role,operation['ids'])['deleted']
                             outcome={'action':'alert_deleted','deleted':deleted}
+                        elif operation['type'] in {'book_hostel','cancel_hostel'}:
+                            from tools.hostel import execute_confirmed
+                            outcome=execute_confirmed(conn,operation,user_id,role)
                         else:
                             outcome=execute_operation_in_transaction(conn,operation,user_id,role)
                         status='confirmed'
-                        response=(('Alert ' if len(outcome['deleted'])==1 else 'Alerts ') + ', '.join('#'+str(i) for i in outcome['deleted']) + ' deleted.' if outcome['action']=='alert_deleted' else
+                        response=(outcome['message'] if outcome['action'] in {'book_hostel','cancel_hostel'} else
+                                  ('Alert ' if len(outcome['deleted'])==1 else 'Alerts ') + ', '.join('#'+str(i) for i in outcome['deleted']) + ' deleted.' if outcome['action']=='alert_deleted' else
                                   f"Leave request #{outcome['record_id']} submitted." if outcome['action']=='submit_leave'
                                   else f"Classroom {operation['classroom_id']} booked on {operation['booking_date']} from {operation['start_time']} to {operation['end_time']} (booking #{outcome['record_id']}).")
                     except (OperationError,PermissionError,ValueError) as exc:

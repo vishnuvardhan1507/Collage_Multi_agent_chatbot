@@ -330,11 +330,12 @@ class SystemTests(unittest.TestCase):
                 self.assertEqual(rows[0]['bus_id'],bus)
                 self.assertIsNotNone(rows[0]['stop_name'])
             self.assertEqual(execute_query("SELECT * FROM bus_locality_aliases WHERE alias='uppal'",user,role),[])
+            self.assertEqual(execute_query("SELECT * FROM bus_locality_aliases WHERE alias='serilingampally'",user,role),[])
             self.assertEqual(len(execute_query('SELECT * FROM bus_routes',user,role)),10)
             for sql in ["DELETE FROM bus_routes", "SELECT provenance FROM transport_services", "SELECT * FROM users"]:
                 with self.assertRaises((PermissionError,sqlite3.DatabaseError,ValueError)):
                     execute_query(sql,user,role)
-        self.assertIsNone(fetch_one("SELECT stop_sequence FROM bus_locality_aliases WHERE alias='serilingampally'")['stop_sequence'])
+        self.assertIsNone(fetch_one("SELECT stop_sequence FROM bus_locality_aliases WHERE alias='serilingampally'"))
         with sqlite3.connect(self.database) as conn:
             conn.execute('PRAGMA foreign_keys=ON')
             for sql in ["UPDATE bus_routes SET monthly_round_trip_fare=-1", "UPDATE bus_stops SET morning_pickup='25:00'", "INSERT INTO bus_locality_aliases VALUES('B01','bad',999)"]:

@@ -33,9 +33,20 @@ def create_app(config_overrides=None):
     app.register_blueprint(leave_bp)
     app.register_blueprint(attendance_bp)
     app.register_blueprint(alert_bp)
+    from routes.admin_routes import admin_bp
+    from auth.admin_cli import register_admin_cli
+    app.register_blueprint(admin_bp)
+    register_admin_cli(app)
     register_worker(app)
 
     with app.app_context():
+        from tools.admin_documents import recover_publications
+        from tools.db_tool import get_connection
+        from contextlib import closing
+        with closing(get_connection()) as conn:
+            admin_schema = conn.execute("SELECT 1 FROM sqlite_master WHERE name='admin_document_revisions'").fetchone()
+        if admin_schema:
+            recover_publications()
         try:
             ensure_vector_store()
         except Exception as exc:

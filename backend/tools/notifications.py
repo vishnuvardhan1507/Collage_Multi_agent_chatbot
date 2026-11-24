@@ -26,6 +26,7 @@ def operation_notification(conn,kind,record_id):
 def deliver_one():
     from auth.mail import send_email
     now=time.time()
+    heartbeat('notification-worker')
     with closing(get_connection()) as conn,conn:
         conn.execute('BEGIN IMMEDIATE')
         from tools.alerts import evaluate_due
@@ -35,6 +36,10 @@ def deliver_one():
             ((status='pending' AND next_attempt<=?) OR (status='sending' AND lease_until<?)) ORDER BY id LIMIT 1''',(now,now)).fetchone()
         if not row:return False
         row=dict(row)
+        owner=conn.execute('SELECT is_active FROM users WHERE user_id=?',(row['user_id'],)).fetchone()
+        if not owner or not owner['is_active']:
+            conn.execute("UPDATE notification_outbox SET status='suppressed' WHERE id=?",(row['id'],))
+            return True
         from tools.alerts import refresh_scheduled_email
         if not refresh_scheduled_email(conn, row):
             return True
@@ -80,6 +85,7 @@ def register_worker(app):
             with app.app_context():
                 while not stop.is_set():
                     try:
+                        heartbeat('topic-research')
                         run_one()
                     except Exception as exc:
                         app.logger.warning('Topic research worker: %s', type(exc).__name__)
@@ -87,6 +93,7 @@ def register_worker(app):
         def research_loop():
             with app.app_context():
                 while not stop.is_set():
+                    heartbeat('research-collector')
                     for collect in (collect_due, collect_notices_due):
                         try:
                             collect()
@@ -104,3 +111,9 @@ def register_worker(app):
                     time.sleep(5)
         finally:
             stop.set()
+
+
+def heartbeat(name, status='running'):
+    with closing(get_connection()) as conn, conn:
+        conn.execute("INSERT INTO worker_heartbeats VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET last_seen=excluded.last_seen,status=excluded.status",
+                     (name,datetime.now(timezone.utc).isoformat(),status))

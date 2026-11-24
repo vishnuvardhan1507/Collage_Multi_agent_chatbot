@@ -623,6 +623,8 @@ def evaluate_due(conn, now=None, only_rule=None, attendance_subject=None):
         from tools.research_updates import queue_digests
         queue_digests(conn, now)
     for row in rows:
+        if not conn.execute('SELECT 1 FROM users WHERE user_id=? AND is_active=1',(row['user_id'],)).fetchone():
+            continue
         rule=dict(row); config=json.loads(rule['config_json']); kind=rule['kind']
         if kind == 'class_reminder':
             body = _class_reminder_body(conn, rule, config, now)

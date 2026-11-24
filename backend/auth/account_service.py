@@ -18,12 +18,12 @@ DEPARTMENTS = ("Computer Science", "Electronics", "Mathematics", "Management", "
 def validate_user_id(user_id, role=None):
     if not isinstance(user_id, str):
         raise ValueError('Enter your account ID.')
-    prefix = {'student': 'STU', 'faculty': 'FAC'}.get(role)
+    prefix = {'student': 'STU', 'faculty': 'FAC', 'admin': 'ADM'}.get(role)
     if prefix and not user_id.startswith(prefix):
         raise ValueError(f"Username should start with {prefix} for {role}.")
-    if not prefix and not user_id.startswith(('STU', 'FAC')):
+    if not prefix and not user_id.startswith(('STU', 'FAC', 'ADM')):
         raise ValueError("Username should start with STU for students or FAC for faculty.")
-    if not re.fullmatch(r'(STU|FAC)[A-Za-z0-9_-]{1,37}', user_id):
+    if not re.fullmatch(r'(STU|FAC|ADM)[A-Za-z0-9_-]{1,37}', user_id):
         raise ValueError("Username must have STU or FAC followed by letters, numbers, underscores or hyphens (4–40 characters).")
 
 
@@ -84,6 +84,10 @@ def register_account(data):
 
 
 def issue_reset(user_id):
+    with closing(get_connection()) as conn:
+        user = conn.execute("SELECT role,is_active FROM users WHERE user_id=?", (user_id,)).fetchone()
+        if not user or not user["is_active"] or user["role"] == "admin":
+            raise ValueError("Account recovery is unavailable for this account.")
     code = f"{secrets.randbelow(1_000_000):06d}"
     digest = _otp_digest(user_id, code)
     now = int(time.time())
@@ -115,7 +119,7 @@ def reset_password(email, code, password, user_id):
     now = int(time.time())
     with closing(get_connection()) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
-        if not conn.execute("SELECT 1 FROM users WHERE user_id=? AND email=? COLLATE NOCASE", (user_id, email)).fetchone():
+        if not conn.execute("SELECT 1 FROM users WHERE user_id=? AND email=? COLLATE NOCASE AND is_active=1 AND role!='admin'", (user_id, email)).fetchone():
             raise ValueError("This email is not registered for this account ID.")
         row = conn.execute("""SELECT o.* FROM password_reset_otps o JOIN users u ON u.user_id=o.user_id
             WHERE u.user_id=? AND u.email=? COLLATE NOCASE AND o.expires_at>? AND o.attempts<5""", (user_id, email, now)).fetchone()

@@ -75,7 +75,7 @@ export default function Login() {
         const id = form.user_id.trim();
         const prefix = form.role === 'faculty' ? 'FAC' : 'STU';
         if (view === 'signup' && !id.startsWith(prefix)) throw new Error(`Username should start with ${prefix} for ${form.role}.`);
-        if (view === 'login' && !/^(STU|FAC)/.test(id)) throw new Error('Username should start with STU for students or FAC for faculty.');
+        if (view === 'login' && !/^(STU|FAC|ADM)/.test(id)) throw new Error('Use STU for students, FAC for faculty or ADM for administrators.');
       }
       if (view === "login") {
         await login(form.user_id.trim(), form.password);

@@ -1,6 +1,6 @@
 # NexusIQ ? College Multi-Agent Assistant
 
-A role-aware college assistant that combines conversational AI, institutional records, policy retrieval, and transactional services. Students and faculty can ask questions in natural language, complete supported actions, and manage email alerts through one React interface.
+A role-aware college assistant that combines conversational AI, institutional records, policy retrieval, and transactional services. Students and faculty can ask questions in natural language, complete supported actions, and manage email alerts through one React interface. Administrators use a separate, audited management dashboard.
 
 **React ? Vite ? Flask ? SQLite ? LangGraph ? Groq ? ChromaDB ? SMTP**
 
@@ -21,7 +21,7 @@ A role-aware college assistant that combines conversational AI, institutional re
 | Subject help | Browse recorded syllabus units, ask focused topic questions, and request explanations or educational examples under relevant syllabus topics. |
 | Career guidance | Receive advisory curriculum-based suggestions for roles such as AI developer, data scientist, or full-stack developer, with useful topics and prerequisite-aware learning order. These are not placement-clearance decisions. |
 | Transport | Find recorded routes by locality or bus ID, stops, pickup/drop-off times, and monthly round-trip fares. No bus reservation, payment, or live tracking. |
-| Hostel and mess | Check room categories, current vacancies, separate room/mess costs, and daily veg/non-veg breakfast, lunch, evening snacks, and dinner. Search for a particular dish or use conversational follow-ups. Hostel booking is not supported. |
+| Hostel and mess | Search current vacant rooms by sharing, AC, and budget using LLM-generated, validated read-only SQL; select a room and confirm a one-bed allocation, view your active booking, or confirm cancellation. Room and mess fees remain separate. Browse daily veg/non-veg meals, search dishes, and use conversational follow-ups. |
 | Policies and onboarding | Ask about the handbook, academic/examination rules, leave policy, and recorded onboarding dates, locations, documents, and processes through RAG. |
 | Alerts and research | Manage personal notifications, receive qualifying automatic subject updates, and request emailed learning references for a curriculum-related topic. |
 
@@ -72,17 +72,18 @@ flowchart TD
     UI[React / Vite chat and manual portal] --> API[Flask API + JWT authentication]
     API --> ID[Reload identity and enforce role scope]
     ID --> GRAPH[LangGraph orchestration]
-    GRAPH --> SUP[Supervisor intake and planning]
-    SUP --> GUARD[Guardrail / scope checks]
-    GUARD --> PLAN[Structured module request]
+    GRAPH --> INTAKE[Supervisor intake]
+    INTAKE --> GUARD[Guardrail / scope checks]
+    GUARD --> SUP[Supervisor planning]
+    SUP --> PLAN[Structured module request]
     PLAN --> READ[Trusted parameterized module reads]
-    PLAN --> SQL[SQL generation + Validator]
+    PLAN --> SQL[SQL generation + Validator: including hostel searches]
     SQL --> SAFE[Authorized read-only SQLite view]
     PLAN --> RAG[Policy / onboarding retrieval]
     RAG --> VECTOR[Chroma + MiniLM embeddings]
     RAG --> LEX[Lexical fallback]
     PLAN --> ACTION[Trusted action services]
-    ACTION --> CONF[Confirm / Cancel for chat leave and room booking]
+    ACTION --> CONF[Confirm / Cancel: leave, classroom, hostel booking and cancellation]
     CONF --> TX[Transactional permission and conflict recheck]
     ACTION --> TX
     READ --> ANSWER[Grounded explanation / factual fallback]
@@ -92,6 +93,9 @@ flowchart TD
     ANSWER --> UI
     API --> MEMORY[Per-account JSON conversation memory]
     TX --> DB[(SQLite records and private state)]
+    API --> ADMIN[Manual administrator dashboard services]
+    ADMIN --> AUDIT[Permissions, revisions, dependencies and audit]
+    AUDIT --> DB
     PLAN --> JOB[Student research job queue]
     JOB --> DB
     DB --> WORKER[Separate notification worker]
@@ -107,7 +111,7 @@ The diagram groups logical responsibilities; not every question visits every age
 ### Data and authorization
 
 - **SQLite** is authoritative for academic records, timetable, classroom/hostel inventory, mess menus, transport, syllabus, and career mappings.
-- **Trusted services** perform parameterized writes and recheck permissions, dates, capacity, conflicts, and revisions inside transactions. Chat leave submission and classroom booking require explicit confirmation; complete attendance saves and valid alert creation use their own immediate-save rules.
+- **Trusted services** perform parameterized writes and recheck permissions, dates, capacity, conflicts, and revisions inside transactions. Chat leave submission, classroom booking, hostel booking, and hostel cancellation require explicit confirmation; complete attendance saves and valid alert creation use their own immediate-save rules.
 - **Generated SQL reads** run against an isolated authorized dataset with SQLite restrictions and execution/row limits. Credential, notification, confirmation, and internal research tables are not exposed to the agent.
 - **RAG** covers Markdown policies and onboarding, not duplicated room inventories or bus schedules. Document fingerprints refresh changed chunks and remove stale ones. Current chunking uses 900 characters with a 780-character step (120-character overlap), retrieving up to four chunks.
 - **Conversation memory** uses per-account JSON files, locks, and atomic replacement. Deletion markers prevent delayed replies from recreating cleared conversations.
@@ -226,6 +230,16 @@ npm --prefix frontend run build
 
 Research integration tests use mocked external services and email. A successful test suite does not prove live source availability or SMTP inbox delivery.
 
+The 24 November 2026 verification passed **311 backend tests** and the Vite production build. A limited live Groq hostel search returned successfully through the SQL Query Agent, Validator, and database stages using isolated test data.
+
+### Hostel search and booking
+
+Hostel inventory enquiries follow **Supervisor → SQL Query Agent → Validator → authorized read-only SQLite execution → answer generation**. The model writes the SELECT query using the relevant schema and conversation context. Availability excludes full rooms and applies each requested sharing, AC, and room-budget condition. These searches require model calls and are subject to provider rate limits.
+
+Students choose a returned room ID, review the displayed details, and click Confirm before a bed is allocated. The transaction rechecks vacancy, room characteristics, price, preferences, and the one-active-booking restriction. Confirmation retries cannot allocate another bed. Viewing an active booking and cancellation use private, authenticated services; cancellation requires confirmation and releases the bed once.
+
+Hostel allocation is immediate, with no stay-date reservation, payment, mess enrollment, or hostel-booking email workflow. Faculty can inspect public inventory but cannot book student beds. Migration 22 adds private hostel allocations without replacing existing room occupancy. Administrators cannot delete occupied rooms or lower occupancy below recorded active allocations.
+
 ```text
 backend/
   agents/          Agent graph, prompts, LLM client, response formatting
@@ -244,6 +258,65 @@ docs/screenshots/  Selected demonstration screenshots
 
 Runtime databases, vector stores, conversation files, backups, logs, and credentials are deliberately excluded from Git. Older design/report documents retained in `docs/` are historical; this README and the current source describe implemented behavior.
 
+## Manual administration
+
+Administrators sign in through the existing login page with an `ADM` account and open a separate management dashboard. Administration does not use the chatbot or generated SQL. Public signup continues to support students and faculty only.
+
+### First administrator and recovery
+
+Run these commands locally from the project root. Migration 21 creates a timestamped database backup before adding administrator access; it preserves existing passwords, records and conversations.
+
+```powershell
+.\.venv\Scripts\python.exe backend\db\migrate.py
+cd backend
+..\.venv\Scripts\python.exe -m flask --app app admin-account
+```
+
+The command prompts for an `ADM` ID, display name, registered email and a hidden password of at least 12 characters. No administrator password is seeded, returned by an API, or sent in email. To recover an existing administrator, run `admin-account --recover` locally; this invalidates their previous login tokens. Administrator recovery is deliberately unavailable through public password-reset endpoints.
+
+Restart the backend and the notification worker after upgrading. Start only one worker:
+
+```powershell
+..\.venv\Scripts\python.exe -m flask --app app notification-worker
+```
+
+### Dashboard capabilities
+
+| Section | Available actions |
+|---|---|
+| Overview | View account, course and facility counts. |
+| Accounts | Search students/faculty, provision accounts, update contact/profile details, assign student advisors, deactivate/reactivate accounts and request setup emails. IDs, roles and departments remain immutable. |
+| Academics | Maintain courses, same-department teaching assignments, prerequisites, aliases, syllabus units, topics and learning outcomes. Prerequisite cycles and scheduling conflicts are rejected. |
+| Timetable | Add future sessions or replace an existing schedule with a new effective period starting tomorrow or later in IST. Historical row IDs and saved attendance remain intact; Saturdays and Sundays remain holidays. |
+| Facilities | Maintain classroom equipment/capacity, hostel occupancy/prices, independent mess fees and daily meals, transport routes/stops/aliases and service settings. Unknown equipment remains unknown. |
+| Policies | Edit and preview the five allowlisted handbook/policy/onboarding documents, then confirm publication. Revision history and publication/index status are recorded. HTML is displayed as text in preview. |
+| Monitoring | View worker heartbeats, email/research status counts, recent delivery statuses and administrator audit activity. No message bodies, private conversations or credentials are displayed. |
+
+New student/faculty accounts receive a registered-email OTP for setting their password through the existing password-reset screen. The account remains saved if SMTP fails, and the administrator can retry the setup email. A newly provisioned student is not automatically given registrations or attendance records.
+
+Deactivation revokes login tokens, cancels pending action confirmations and suppresses pending messages/research work. Reactivation does not restore old tokens or replay suppressed messages. A message already accepted for delivery may still arrive. No accounts are hard-deleted.
+
+Edits require a reason and a revision check. Account status changes, teaching reassignment, timetable replacement and policy publishing require confirmation. Capacity/equipment reductions are rejected when the classroom has future bookings. Administrators cannot alter grades, attendance totals, registration/completion status, existing leave decisions or classroom bookings through this dashboard.
+
+### Implementation and APIs
+
+- `backend/routes/admin_routes.py`: authenticated `/api/admin/*` routes.
+- `backend/tools/admin_service.py`: allowlisted reads/writes, validation, revision checks and transactional audit records.
+- `backend/tools/admin_documents.py`: restricted document paths, durable publication intents, atomic file replacement and search-index refresh.
+- `backend/auth/admin_cli.py`: interactive administrator provisioning/recovery.
+- `backend/db/admin_migration.py`: backed-up schema migration 21. Private tables stay outside the chatbot's SQL metadata.
+- `frontend/src/pages/Admin.jsx` and `admin.css`: responsive dashboard, editors and keyboard-accessible confirmation dialogs.
+
+Authenticated admin endpoints include `GET overview`, `GET catalog`, `GET/POST/DELETE records/<resource>`, `POST accounts/<id>/setup-email`, `GET courses/<id>/impact`, `GET/POST/DELETE documents/<name>` and `GET monitoring`, all under `/api/admin/`. These endpoints reject student/faculty tokens. Student/faculty business routes reject administrator tokens. No browser-provided SQL, credentials or arbitrary filesystem path is accepted.
+
+The worker writes separate notification, research-collection and topic-research heartbeats. Monitoring marks heartbeats older than three minutes as stale; this is a status signal, not proof that a process has exited. Publishing refreshes the existing fingerprint-based RAG store; lexical retrieval remains available if the local vector model is unavailable.
+
+### Upgrade verification and rollback
+
+Run the complete backend suite and the Vite build after upgrading. The administrator tests use isolated databases and mocked SMTP. Browser checks must use an isolated account/database for mutations, rather than real academic data.
+
+This implementation's pre-change source/database backup and restore manifest are stored privately under `backend/backups/admin-dashboard-20261120-103934/`. Migration 21 also creates its own adjacent `.bak` file. Stop the backend and worker before rollback; compare current file hashes against the post-change manifest and preserve any later edits. Restore only the affected files, not entire source directories. Do not replace a live database snapshot after subsequent user activity without first preserving that activity. Additive admin tables may remain if rolling application code back; any admin-created accounts require an explicit data-retention decision before reverting the role constraint. Do not publish backups or credentials.
+
 ## Operational limits and security
 
 - Groq rate limits apply across all model calls, including background research; a multi-stage request can consume more than one call. No guarantee of quota-free or instant answers is made.
@@ -252,3 +325,11 @@ Runtime databases, vector stores, conversation files, backups, logs, and credent
 - Timetables and menus reflect stored records; unrecorded cancellations and future availability are not predicted.
 - This repository is a demonstration application, not a claim of production security certification. Review account provisioning, deployment, HTTPS, SMTP, backups, and policy data before public use.
 - Keep `.env`, secrets, databases, uploads, private conversation history, and backups out of version control. The example configuration contains placeholders only.
+
+### Admin dashboard and deletion controls
+
+The overview shows live database counts, today's effective timetable, and the proportion of classrooms with a recorded booking at the current IST time. It does not infer physical occupancy or classroom locations from timetable records. Search finds accounts, courses and classrooms; record pages provide filtering and totals.
+
+Editable records have a destructive action in both the table and editor. Every deletion requires confirmation and a reason, checks the current revision, and writes an audit snapshot. Referenced records cannot be deleted, including dependencies that would otherwise cascade. Timetable periods that have already started and occupied hostel rooms are protected. Prerequisite deletion removes only the course's prerequisite links. Account removal deactivates the account and preserves academic records and history. Policy deletion retains its revision history and refreshes knowledge-base retrieval. Monitoring and audit history are read-only.
+
+The dashboard also uses authenticated `GET /api/admin/search?q=...`. All delete operations enforce administrator permissions on the server; the browser cannot bypass dependency or revision checks.

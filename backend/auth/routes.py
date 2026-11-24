@@ -33,7 +33,7 @@ def login():
 
     db_path = current_app.config["DATABASE_PATH"]
     user = fetch_one(
-        "SELECT user_id, username, password_hash, role, token_version FROM users WHERE user_id = ?",
+        "SELECT user_id, username, password_hash, role, token_version, is_active FROM users WHERE user_id = ?",
         (user_id,),
         db_path=db_path,
     )
@@ -42,7 +42,7 @@ def login():
             validate_user_id(user_id, user['role'])
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
-    if not user or not verify_password(user["password_hash"], password):
+    if not user or not user["is_active"] or not verify_password(user["password_hash"], password):
         return jsonify({"error": "Invalid credentials"}), 401
 
     token = create_access_token(identity=user["user_id"], additional_claims={"role": user["role"], "ver": user["token_version"]})
@@ -81,7 +81,7 @@ def forgot_password():
         return jsonify({"error": str(exc)}), 400
     if not consume_limit("forgot-ip", request.remote_addr or "unknown", 10) or not consume_limit("forgot-email", email, 5):
         return jsonify({"error": "Too many reset requests. Please try again in 15 minutes."}), 429
-    user = fetch_one("SELECT user_id FROM users WHERE user_id = ? AND email = ? COLLATE NOCASE", (user_id, email))
+    user = fetch_one("SELECT user_id FROM users WHERE user_id = ? AND email = ? COLLATE NOCASE AND is_active=1 AND role!='admin'", (user_id, email))
     if not user:
         return jsonify({"error": "This email is not registered for this account ID."}), 400
     if not mail_configured():

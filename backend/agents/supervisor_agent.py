@@ -13,6 +13,7 @@ from tools import attendance_chat
 from tools import alerts
 from tools import academic_guidance
 from tools import topic_research
+from tools import hostel
 
 
 def supervisor_intake_node(state):
@@ -99,6 +100,13 @@ def supervisor_node(state):
             alert_update = result.get('alert_update')
             guidance_request = result.get('academic_guidance_request')
             research_request = result.get('research_request')
+            hostel_request = result.get('hostel_request')
+            if hostel_request is not None:
+                hostel.validate_request(hostel_request)
+                if route!='direct' or any(result.get(k) is not None for k in ('sql','sql_query','operation','academic_guidance_request','research_request','menu_request','timetable_request','leave_update','attendance_update','alert_update','course_eligibility_request','teaching_load_request')):
+                    raise ValueError('Use hostel_request as a separate trusted request, without SQL or other actions.')
+            elif modules == ['hostel'] and route == 'direct' and result.get('needs_clarification') is not True:
+                raise ValueError('Hostel inventory searches require route=sql (or both with policy) and scoped_request for the SQL Query Agent. Booking, cancellation and current private bookings require hostel_request. Do not answer inventory questions without a lookup.')
             if research_request is not None:
                 topic_research.validate(research_request)
                 if route != 'direct' or any(result.get(k) is not None for k in ('sql','sql_query','operation','academic_guidance_request','menu_request','timetable_request','leave_update','attendance_update','alert_update','course_eligibility_request','teaching_load_request')):
@@ -173,6 +181,15 @@ def supervisor_node(state):
     state.update(route=route, scoped_request=result.get('scoped_request') or state['query'],
                  retrieval_query=result.get('retrieval_query') or state['query'],
                  direct_answer=result.get('direct_answer') or 'Please clarify your college question.')
+    if hostel_request is not None:
+        try:
+            outcome=hostel.handle(hostel_request,state['user_id'],state['role'],state['session_id'])
+            state.update(route='direct',final_response=outcome['response'])
+            if outcome.get('confirmation'):state['confirmation']=outcome['confirmation']
+        except (OperationError,PermissionError,ValueError) as exc:
+            state.update(route='direct',final_response=str(exc))
+        state['agent_trace'].append('hostel_tool')
+        return state
     if research_request is not None:
         try:
             outcome = topic_research.enqueue_request(state['user_id'],state['role'],state['session_id'],

@@ -59,6 +59,7 @@ Migration 20 adds private research_jobs and research_job_receipts with backup an
 They remain excluded from generated SQL. Other alerts, automatic daily updates, records and conversations
 are preserved. Automated tests use isolated databases, mocked pages, model decisions and SMTP.
 
+Backups: backups/on-demand-research-20261118-103353. See RESTORE.md for targeted rollback.
 Stop the backend and worker before restoring code. Preserve the new private tables and history;
 suppress pending topic-research:% emails and unfinished jobs before running old code. Never replace
 current academic data with the pre-change database snapshot after subsequent student activity.

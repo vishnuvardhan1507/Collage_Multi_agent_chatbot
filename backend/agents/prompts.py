@@ -26,7 +26,10 @@ manage their own attendance and leave-decision alerts; faculty may manage assign
 attendance, occupied classroom-slot availability, and department leave-request alerts.
 Room occupancy never exposes another faculty member's booking purpose or identity.
 Both roles may read public hostel vacancies, room fees, mess fees and weekly menus.
-Hostel information is read-only: no hostel reservations, allocations or cancellations.
+Students may allocate one hostel bed for themselves and cancel their own booking through
+the trusted hostel tool, always with final Confirm/Cancel buttons. One active allocation
+per student; no stay-date reservations, payments or mess enrollment. Faculty may browse
+hostel inventory but cannot allocate beds or view student hostel bookings.
 """
 
 GUARDRAIL_AGENT_PROMPT = """
@@ -101,6 +104,9 @@ Allow greetings, college policies, academic what-if calculations and plausible f
 Allow campus transport suggestions by locality and bus schedule/fare questions.
 Allow hostel sharing/AC choices, vacancies, fees and veg/non-veg mess meal questions,
 including short weekday, meal or room-preference follow-ups.
+Allow students to select and book one hostel bed, view their own booking, and cancel it.
+Classify these and contextual room selections as hostel. Trusted confirmation controls enforce
+ownership and vacancies; missing preferences are not a guardrail denial reason.
 Allow students to request deletion of their own leave by ID or description; missing record
 ownership/date evidence is not a denial reason at intake. A scoped server lookup and
 transaction enforce those conditions later. Deny explicit attempts to delete others' records.
@@ -396,7 +402,7 @@ including overall percentages and multi-day absences. Resolve date ranges from c
 "Next N consecutive days/dates" means tomorrow through N calendar days, not teaching days.
 Never answer a projection directly or propose leave submission for a hypothetical absence.
 """),
-    (('hostel', 'mess'), """Hostel rooms, vacancies and room/mess prices use SQL. Food menus use the dedicated menu route/tool, never generated SQL.
+    (('hostel', 'mess'), """Hostel room inventory searches and separate mess price questions use route=sql and scoped_request for the SQL Query Agent. Hostel booking, cancellation and private current-booking reads use hostel_request. Food menus use the dedicated menu route/tool, never generated SQL.
 """),
     (('mess',), """The ONLY configured mess plans are veg and non_veg. 'Non veg' fully identifies non_veg;
 never ask for standard/special/premium plans or invent additional plan types. If no plan
@@ -407,8 +413,28 @@ the last relevant user choices in history. Preserve meal/plan/sharing preference
 changed. Include resolved choices in scoped_request. Resolve today/tomorrow to weekdays
 using current_date in the college timezone. No preference means show categories, not guess.
 """),
-    (('hostel',), """Hostel availability means recorded vacant beds now; future availability is not supported.
-Hostel booking is not supported: explain this instead of generating an operation.
+    (('hostel',), """Hostel availability means recorded vacant beds now; date-based stays are not supported.
+For inventory searches, availability, comparisons and preference changes use route="sql"
+(or "both" when also requesting policy), hostel_request=null, and scoped_request containing
+all resolved preferences. The SQL Query Agent must generate the SELECT, then the Validator
+checks it before authorized read-only execution. Never answer inventory from history alone.
+For booking, cancellation and private current-booking reads ONLY use route="direct" and
+hostel_request, without SQL, operations or other structured tasks:
+{"mode":"book","room_id":"selected room ID","preferences":{...}}
+{"mode":"current"}
+{"mode":"cancel","booking_id":123} (booking_id may be omitted for the student's current booking).
+Preferences are optional; include every explicit sharing/AC/room-budget preference. Budget is
+per student per month for the room only. Do not invent stay dates, payment or mess enrollment.
+Interpret natural language and follow-ups from user choices and the last room list. 'The second
+one' selects that listed room. Preserve preferences on selection unless the user explicitly changes
+them. Do not choose a room automatically, even with one match: search and invite selection first.
+An explicit room ID booking request is a selection. If the selection is ambiguous, ask which room.
+Search incomplete preferences with the known filters; no preferences means show all vacant categories.
+Current-booking and cancellation reads are authenticated: never accept another student's identity.
+Booking and cancellation only propose confirmation; never claim success. Once a card exists, direct
+ordinary 'yes/confirm/cancel' replies to its buttons rather than replacing it. A fresh explicit request
+may propose another action. For hostel policy-only questions use RAG. For genuinely ambiguous intent
+set needs_clarification=true with a specific question. Never ask faculty to book a hostel bed.
 """),
     (('transport',), """For a bare locality such as 'Miyapur', retrieve institute buses serving that locality.
 Resolve 'its fare', 'return time' and 'where do I board' using the previous bus/locality
@@ -504,7 +530,7 @@ operations but never infer one. For non-menu requests omit menu_request or set i
 """),
     ((), """On validation_feedback correct the structured output without changing the user's intent.
 Return JSON: {"route":"sql|rag|both|direct|menu", "attendance_update":object or null, "leave_update":object or null, "alert_update":object or null, "course_eligibility_request":object or null, "teaching_load_request":object or null, "menu_request":object or null, "timetable_request":object or null, "scoped_request":string or null,
-"academic_guidance_request":object or null, "research_request":object or null, "needs_clarification":boolean,
+"academic_guidance_request":object or null, "research_request":object or null, "hostel_request":object or null, "needs_clarification":boolean,
 "retrieval_query":string or null, "direct_answer":string or null}.
 """),
 )
@@ -621,9 +647,13 @@ provide a holiday calendar or guarantee a particular day's service. No transport
     (('hostel', 'mess'), """Hostel inventory is hostel_rooms, NOT classrooms. sharing_capacity is exactly 2, 3 or 4;
 has_ac=1 is AC, has_ac=0 is non-AC. Compute available_beds=sharing_capacity-occupied_beds.
 For available hostel rooms require occupied_beds < sharing_capacity and AND every explicit
-sharing/AC preference. Return room_id, sharing_capacity, has_ac, available_beds and
+sharing/AC/budget preference. A maximum room budget means monthly_room_fee <= that amount;
+'below' means < and 'at most' means <=. Retain unchanged preferences from scoped_request
+and history; never relax them silently. Return room_id, sharing_capacity, has_ac, available_beds and
 monthly_room_fee, sorted by monthly_room_fee then room_id. Without preferences summarize
-available room counts and vacant beds per sharing_capacity,has_ac,monthly_room_fee.
+available categories; when the user wants room options for selection, return room IDs too.
+Do not generate hostel INSERT/UPDATE/DELETE or query private hostel_bookings. Actual booking,
+cancellation and current-booking checks must use the Supervisor's trusted hostel_request path.
 Room fees are INR per student per month, excluding mess. mess_plans has independent
 monthly_mess_fee for plan_id='veg' or 'non_veg'; either plan can accompany any room.
 Do not join rooms to menus to determine vacancies. Return separate prices; add room and
@@ -681,7 +711,11 @@ For a read, check SQLite syntax, joins, requested meaning and floating-point ari
 """),
     (('mess',), """For menus verify exact veg/non_veg plan, weekday and meal, resolved from user context.
 """),
-    (('hostel',), """Do not approve hostel writes or imply that a classroom booking reserves a hostel bed.
+    (('hostel',), """Hostel writes must use the trusted hostel_request path with confirmation, never generated SQL.
+Hostel inventory SELECT queries are supported. Check that all explicit sharing, AC and budget
+filters are present, and availability requires occupied_beds < sharing_capacity. Vacant beds
+equal sharing_capacity - occupied_beds. Reject queries against private hostel_bookings.
+Do not imply that a classroom booking reserves a hostel bed.
 """),
     (('transport',), """For transport reads check requested bus/locality filters and joins preserve route and stop identity.
 Use transport_catalog for canonical bus IDs and campus identity. Bus spelling aliases are
@@ -788,6 +822,12 @@ Ask faculty to select a room before booking; keep clarification concise.
 room fee per student in a compact table. Show categories if no preferences were supplied.
 Empty results mean no matching vacant beds; never silently substitute another room type.
 These are recorded current vacancies, not guaranteed future availability or reservations.
+For room selection show a compact table including the returned room IDs, sharing, AC, vacant
+beds and room fees in query order. Invite students to select a room ID for confirmation;
+never automatically select or claim a reservation. Faculty may browse inventory but not book.
+Use only fresh SQL results for inventory; no matching rows means no recorded match for the
+requested preferences, not permission to substitute a different room. Preserve history for
+intent and selection only. Do not add filenames or source commentary.
 Show room and mess charges separately, labeled per student per month in INR; only add a
 combined total if asked. Either mess plan can be chosen independently of room type.
 """),

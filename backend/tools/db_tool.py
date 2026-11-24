@@ -60,8 +60,8 @@ def fetch_all(sql, params=(), db_path=None):
 
 
 def verify_identity(conn, user_id, role):
-    row = conn.execute("SELECT role FROM users WHERE user_id = ?", (user_id,)).fetchone()
-    if not row or role not in {"student", "faculty"} or row["role"] != role:
+    row = conn.execute("SELECT role,is_active FROM users WHERE user_id = ?", (user_id,)).fetchone()
+    if not row or not row["is_active"] or role not in {"student", "faculty"} or row["role"] != role:
         raise PermissionError("Account or role is no longer valid.")
 
 

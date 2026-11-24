@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Login from "./pages/Login.jsx";
+import Admin from "./pages/Admin.jsx";
 import Chat from "./pages/Chat.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 
@@ -13,5 +14,5 @@ export default function App() {
   }, []);
   const { user, initializing } = useAuth();
   if (initializing) return <main className="empty-state">Checking your session...</main>;
-  return user && !resetting ? <Chat key={user.user_id} /> : <Login />;
+  return user && !resetting ? (user.role === "admin" ? <Admin /> : <Chat key={user.user_id} />) : <Login />;
 }

@@ -68,7 +68,7 @@ members' identities and booking purposes remain private.
 ## Hostel and mess enquiries
 
 Students can check hostel vacancies by sharing type and AC preference, and ask for room
-fees and separate mess fees. These are information-only enquiries, not reservations.
+fees and separate mess fees. Students can select a vacant room and book one bed through chat.
 Current inventory and prices must be checked in the database.
 
 Room and mess fees are separate charges per student, per month. Either mess plan can
@@ -78,7 +78,15 @@ room counts, occupied beds, and fees from current database records.
 
 Vacant beds equal sharing capacity minus occupied beds. Match all requested preferences
 and exclude full rooms when listing vacancies. Recorded vacancies do not guarantee future
-availability. The chatbot cannot reserve, allocate, or cancel hostel rooms.
+availability. A selected room displays a final Confirm/Cancel card with its sharing type,
+AC status and monthly room fee. Nothing is allocated until Confirm succeeds; pending cards
+do not hold beds and expire after 15 minutes. Availability and prices are checked again
+at confirmation. Changed room details require a new confirmation.
+
+Each student may have one active hostel booking. The allocation starts immediately; no
+stay dates, payments or mess enrollment are included. Students may ask about their own
+booking or cancel it through a final Confirm/Cancel card, releasing their bed after commit.
+Faculty can browse hostel availability but cannot book beds. Other students' bookings are private.
 
 Both Veg and Non-veg menus are available to browse for Monday through Sunday, with
 breakfast, lunch, evening snacks, and dinner listed separately. Ask for a whole day,
